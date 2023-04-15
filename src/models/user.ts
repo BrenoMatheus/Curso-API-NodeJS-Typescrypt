@@ -1,5 +1,5 @@
 import mongoose, { Document, Model } from 'mongoose';
-import bcrypt from 'bcrypt';
+import AuthService from '@src/services/auth';
 
 export interface User {
   _id?: string;
@@ -9,7 +9,7 @@ export interface User {
 }
 
 export enum CUSTOM_VALIDATION {
-  DUPLICATED = 'DUPLICATED'
+  DUPLICATED = 'DUPLICATED',
 }
 
 interface UserModel extends Omit<User, '_id'>, Document {}
@@ -20,13 +20,12 @@ const schema = new mongoose.Schema(
     email: {
       type: String,
       required: true,
-      unique: true,
     },
     password: { type: String, required: true },
   },
   {
     toJSON: {
-      transform: (_, ret): void => {
+      transform: (_, ret:any): void => {
         ret.id = ret._id;
         delete ret._id;
         delete ret.__v;
@@ -34,6 +33,7 @@ const schema = new mongoose.Schema(
     },
   }
 );
+
 /**
  * Validates the email and throws a validation error, otherwise it will throw a 500
  */
@@ -46,6 +46,16 @@ schema.path('email').validate(
   CUSTOM_VALIDATION.DUPLICATED
 );
 
-
+schema.pre<UserModel>('save', async function (): Promise<void> {
+  if (!this.password || !this.isModified('password')) {
+    return;
+  }
+  try {
+    const hashedPassword = await AuthService.hashPassword(this.password);
+    this.password = hashedPassword;
+  } catch (err) {
+    console.error(`Error hashing the password for the user ${this.name}`, err);
+  }
+});
 
 export const User: Model<UserModel> = mongoose.model<UserModel>('User', schema);
